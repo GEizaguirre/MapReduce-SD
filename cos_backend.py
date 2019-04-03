@@ -7,7 +7,6 @@ Created on 27 feb. 2019
 import ibm_boto3
 import ibm_botocore
 from configuration_paramethers import cos_config
-from configuration_paramethers import bucket_name
 from docutils.nodes import status
 
 class COSbackend:
@@ -96,7 +95,7 @@ class COSbackend:
         return self.cos_client.delete_object(Bucket=bucket_name, Key=key)
     
     def list_objects (self, bucket_name, prefix=None):
-        paginator = self.cos_client_get_paginator('list_objects_v2')
+        paginator = self.cos_client.get_paginator('list_objects_v2')
         try:
             if (prefix is not None):
                 page_iterator=paginator.paginate(Bucket=bucket_name, Prefix=prefix)
