@@ -1,12 +1,10 @@
 import requests
 import base64
 import os
-from configuration_paramethers import functions_config
-
 
 class CloudFunctions:
 
-    def __init__(self, config):
+    def __init__(self, functions_config):
         """
         Constructor
         """
@@ -31,7 +29,6 @@ class CloudFunctions:
         print("{} Namespace: {}".format(msg, self.namespace))
         print("{} Host: {}".format(msg, self.endpoint))
 
-    # Hay que pasarle code en binario. Abrir zip en binario y pasárselo por aquí.
     def create_action(self, action_name, code=None, kind='blackbox',
                       image='ibmfunctions/action-python-v3.6', is_binary=True, overwrite=True):
         """
@@ -40,7 +37,7 @@ class CloudFunctions:
         print('I am about to create a new cloud function action')
         url = os.path.join(self.endpoint, 'api', 'v1', 'namespaces',
                            self.namespace, 'actions',
-                           action_name + "?overwrite=" + str(overwrite))
+                           action_name + "?overwrite=" + str(overwrite)).replace('\\','/')
 
         data = {}
         limits = {}
@@ -72,7 +69,7 @@ class CloudFunctions:
         """
         print("I am about to get a cloud function action: {}".format(action_name))
         url = os.path.join(self.endpoint, 'api', 'v1', 'namespaces',
-                           self.namespace, 'actions', action_name)
+                           self.namespace, 'actions', action_name).replace('\\','/')
         res = self.session.get(url)
         return res.json()
 
@@ -83,7 +80,7 @@ class CloudFunctions:
         print("Delete cloud function action: {}".format(action_name))
 
         url = os.path.join(self.endpoint, 'api', 'v1', 'namespaces',
-                           self.namespace, 'actions', action_name)
+                           self.namespace, 'actions', action_name).replace('\\','/')
         res = self.session.delete(url)
 
         if res.status_code != 200:
@@ -94,9 +91,10 @@ class CloudFunctions:
         Invoke an IBM Cloud Function
         """
         url = os.path.join(self.endpoint, 'api', 'v1', 'namespaces',
-                           self.namespace, 'actions', action_name)
+                           self.namespace, 'actions', action_name).replace('\\','/')
 
         try:
+
             resp = self.session.post(url, json=payload)
             data = resp.json()
             resp_time = format(round(resp.elapsed.total_seconds(), 3), '.3f')
@@ -115,9 +113,11 @@ class CloudFunctions:
         """
         Invoke an IBM Cloud Function waiting for the result.
         """
+
         url = os.path.join(self.endpoint, 'api', 'v1',
                            'namespaces', self.namespace, 'actions',
-                           action_name + "?blocking=true&result=true")
+                           action_name + "?blocking=true&result=true").replace('\\','/')
+        print(url)
         resp = self.session.post(url, json=payload)
         result = resp.json()
 
