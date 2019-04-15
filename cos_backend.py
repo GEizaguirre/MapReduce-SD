@@ -6,12 +6,11 @@ Created on 27 feb. 2019
 
 import ibm_boto3
 import ibm_botocore
-from configuration_paramethers import cos_config
 from docutils.nodes import status
 
 class COSbackend:
     
-    def __init__(self):
+    def __init__(self, cos_config):
         # Credenciales (secret_key y acces_key: IBM cloud -> COS -> ver credenciales)
           
         service_endpoint = cos_config.get ('endpoint').replace('http:', 'https:')
