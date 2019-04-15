@@ -61,7 +61,9 @@ def main ():
                   'access_key':configuration_paramethers.cos_config['access_key']},
                   'bucket_name':bucket_name, 'dataset_name':dataset_name,
                   'rabbit_url':rabbit_config['url'],
-                  'ds_range':None}
+                  'ds_range_min':None,
+                  'ds_range_max':None,
+                  'ds_size':dataset_size}
     fn_session=ibm_cf_connection.CloudFunctions(functions_config)
     global global_dict
     
@@ -74,22 +76,24 @@ def main ():
         chunk_end=chunk_start+chunk_size
         #print ("range: ", chunk_start, chunk_end)
         if chunk_end>=dataset_size: chunk_end=dataset_size - 1
-        else:
-            ds_char='bytes='+str(chunk_end)+'-'+str(chunk_end)
-            
-            while (chunk_end<dataset_size) and (COS_session.get_object(bucket_name,
-                                        dataset_name,
-                                        extra_get_args={'Range': ds_char})).decode('utf-8').isalnum():
-                chunk_end+=1
-                ds_char='bytes='+str(chunk_end)+'-'+str(chunk_end)
+        #else:
+        #    ds_char='bytes='+str(chunk_end)+'-'+str(chunk_end)
+        #    
+        #    while (chunk_end<dataset_size) and (COS_session.get_object(bucket_name,
+        #                                dataset_name,
+        #                                extra_get_args={'Range': ds_char})).decode('utf-8').isalnum():
+        #       chunk_end+=1
+        #       ds_char='bytes='+str(chunk_end)+'-'+str(chunk_end)
         
-            chunk_end-=1
+        #    chunk_end-=1
                 
-        print ("range: ", chunk_start, chunk_end)
-        ds_range='bytes='+str(chunk_start)+'-'+str(chunk_end)
-        map_dataset_info['ds_range']=ds_range
+        #print ("range: ", chunk_start, chunk_end)
+        #ds_range='bytes='+str(chunk_start)+'-'+str(chunk_end)
+        #map_dataset_info['ds_range']=ds_range
+        map_dataset_info['ds_range_min']=chunk_start
+        map_dataset_info['ds_range_max']=chunk_end
         #chunk_dict=fn_session.invoke_with_result('mapDataset', map_dataset_info)
-        print(fn_session.invoke_with_result('map', map_dataset_info))
+        print(fn_session.invoke('map', map_dataset_info))
         #print (chunk_dict)
         #global_dict=mergeDict(global_dict, chunk_dict, lambda n1,n2: n1+n2)
         # llamar a funcion
@@ -100,9 +104,8 @@ def main ():
     received_maps=0
     reduce(channel)
     print ("End of mapping")
-    print (global_dict)
-    #global_dict_sorted = sorted(global_dict.items(), key=lambda x: x[1], reverse=True)
-    #print (global_dict_sorted)
+    global_dict_sorted = sorted(global_dict.items(), key=lambda x: x[1], reverse=True)
+    print (global_dict_sorted)
     #return (global_dict_sorted)
  
 def show_help ():
@@ -124,6 +127,7 @@ def manageResults (ch, method, properties, body):
     # gestionar contenido de body llamando a mergeDict
     global received_maps
     global global_dict
+    print(body.decode('utf-8'))
     chunk_dict = COS_session.get_object (bucket_name, body.decode('utf-8'))
     chunk_dict = json.loads(chunk_dict)
     #print (chunk_dict)
