@@ -4,6 +4,8 @@ Created on 9 abr. 2019
 @author: German
 '''
 import re
+import pika
+import json
 from cos_backend import COSbackend
 
 def map_dataset (map_dataset_info):
@@ -14,18 +16,27 @@ def map_dataset (map_dataset_info):
                                     extra_get_args={'Range': map_dataset_info['ds_range']})
     
     ds_chunk=re.sub("[^\w\s\-]", " ",  ds_chunk.decode('utf-8'))
-    ds_dict=dict()
-    ds_count=0
+    result_dict = dict()
+    result_dict['counting_words']=0
+    result_dict['word_count']=dict()
     ds_list=ds_chunk.lower().split()
     for word in ds_list:
-        ds_count += 1
-        if word in ds_dict:
-            ds_dict[word] += 1
-        else: ds_dict[word] = 1
-        
-    ds_dict_sorted = sorted(ds_dict.items(), key=lambda x: x[1], reverse=True)
+        result_dict['counting_words'] += 1
+        if word in result_dict['word_count']:
+            result_dict['word_count'][word] += 1
+        else: result_dict['word_count'][word] = 1  
     
-    return ({'word_counting':ds_count, 'word_count':ds_dict_sorted, 'text':ds_chunk})
+    serialized_result=json.dumps(result_dict)
+    chunk_name='chunk' + map_dataset_info['ds_range']
+    COS_session.put_object(bucket_name=map_dataset_info['bucket_name'], key=str(chunk_name), data=serialized_result)
+    
+    params=pika.URLParameters(map_dataset_info['rabbit_url'])
+    params.socket_timeout = 10
+    connection = pika.BlockingConnection(params)
+    channel = connection.channel()
+    
+    channel.basic_publish (exchange='', routing_key='mapReduceSD', body='chunk' + map_dataset_info['ds_range'])
+    return ({'chunk_name':chunk_name})
 
 
     
