@@ -4,32 +4,36 @@ Created on 13 mar. 2019
 @author: German
 '''
 import sys
-from configuration_paramethers import bucket_name, functions_config, rabbit_config
 from cos_backend import COSbackend
+from save_result import ResultLog
 import ibm_botocore
 import ibm_cf_connection
 import configure_functions
-import configuration_paramethers
 import pika
 import json
+import yaml
 
-# Default chunk size
-chunk_number=1
-sent_maps=None
-global_dict = dict()
-global_dict['counting_words'] = 0
-global_dict['word_count'] = dict()
-COS_session=COSbackend(configuration_paramethers.cos_config)
+with open('cloud_config', 'r') as config_file:
+    res = yaml.safe_load(config_file)
+
+bucket_name = res['bucket_name']
+COS_session = COSbackend (res['ibm_cos'])
+mapping_result = ResultLog (COS_session)
+fn_session=ibm_cf_connection.CloudFunctions(res['ibm_cf']) 
 
 def main ():
     
+    chunk_number=1
     
     if (len(sys.argv) == 1):
         print (" No parameters were detected.\n A dataset name must be specified at least. ")
         show_help()
         exit
     if (len(sys.argv) > 2):
-        chunk_number=sys.argv[2]
+        chunk_number=int(sys.argv[2])
+        if chunk_number > 20 :
+            print (" Maximum chunk number is 20.")
+            chunk_number = 20
         print(" Chunk number was set to ", chunk_number)
         if chunk_number == 0: exit
     else:   
@@ -43,7 +47,7 @@ def main ():
             dataset_list.append(elem['Key'])  
         # Consult if the chosen dataset is available.
         if dataset_name in dataset_list:
-            dataset_size = COS_session.head_object(bucket_name, dataset_name)['content-length']
+            dataset_size = int(COS_session.head_object(bucket_name, dataset_name)['content-length'])
             print (" Chosen ", dataset_name, " with size ", dataset_size, "B. ")
         else:
             print (" Dataset ", dataset_name, " could not be found in bucket ", bucket_name)
@@ -51,62 +55,40 @@ def main ():
     except ibm_botocore.exceptions.ClientError:
         print ( " Bucket ", bucket_name, " not found.")
      
-    dataset_size=658
     chunk_size=int(dataset_size/int(chunk_number))
-
-    chunk_start=0
     
-    map_dataset_info={'cos_config':{'endpoint':configuration_paramethers.cos_config['endpoint'],
-                  'secret_key':configuration_paramethers.cos_config['secret_key'],
-                  'access_key':configuration_paramethers.cos_config['access_key']},
+    map_dataset_info={'cos_config':{'endpoint':res['ibm_cos']['endpoint'],
+                  'secret_key':res['ibm_cos']['secret_key'],
+                  'access_key':res['ibm_cos']['access_key']},
                   'bucket_name':bucket_name, 'dataset_name':dataset_name,
-                  'rabbit_url':rabbit_config['url'],
+                  'rabbit_url':res['rabbit_mq']['url'],
                   'ds_range_min':None,
                   'ds_range_max':None,
                   'ds_size':dataset_size}
-    fn_session=ibm_cf_connection.CloudFunctions(functions_config)
-    global global_dict
+    
     
     # Start RabbitMQ queue for listening to map functions
     channel=configQueue()
-    global sent_maps
-    sent_maps=0
+    chunk_start=0
+    
+    print (" Mapping...")
     while chunk_start<dataset_size:
         
         chunk_end=chunk_start+chunk_size
-        #print ("range: ", chunk_start, chunk_end)
         if chunk_end>=dataset_size: chunk_end=dataset_size - 1
-        #else:
-        #    ds_char='bytes='+str(chunk_end)+'-'+str(chunk_end)
-        #    
-        #    while (chunk_end<dataset_size) and (COS_session.get_object(bucket_name,
-        #                                dataset_name,
-        #                                extra_get_args={'Range': ds_char})).decode('utf-8').isalnum():
-        #       chunk_end+=1
-        #       ds_char='bytes='+str(chunk_end)+'-'+str(chunk_end)
-        
-        #    chunk_end-=1
                 
-        #print ("range: ", chunk_start, chunk_end)
-        #ds_range='bytes='+str(chunk_start)+'-'+str(chunk_end)
-        #map_dataset_info['ds_range']=ds_range
         map_dataset_info['ds_range_min']=chunk_start
         map_dataset_info['ds_range_max']=chunk_end
-        #chunk_dict=fn_session.invoke_with_result('mapDataset', map_dataset_info)
+        print (mapping_result.sent_maps)
         print(fn_session.invoke('map', map_dataset_info))
-        #print (chunk_dict)
-        #global_dict=mergeDict(global_dict, chunk_dict, lambda n1,n2: n1+n2)
-        # llamar a funcion
         chunk_start=chunk_end + 1
-        sent_maps=sent_maps+1
+        mapping_result.increaseSent()
     
-    global received_maps
-    received_maps=0
     reduce(channel)
-    print ("End of mapping")
-    global_dict_sorted = sorted(global_dict.items(), key=lambda x: x[1], reverse=True)
-    print (global_dict_sorted)
-    #return (global_dict_sorted)
+    print (" End of mapping")
+    mapping_result.dict['word_count'] = sorted(mapping_result.dict['word_count'].items(), key=lambda x: x[1], reverse=True)
+    print (mapping_result.dict)
+    #return (mapping_result.dict)
  
 def show_help ():
     print (" MapReduce program. Needs a chunk size (optional) and a dataset name (compulsive).")
@@ -120,25 +102,23 @@ def mergeDict (map_result1, map_result2, mergingFunct= lambda x,y:x):
             map_result1['word_count'][k] = v
 
 def reduce(channel):
-    print("Accumulating maps")
+    print(" Reducing...")
     channel.start_consuming()
        
 def manageResults (ch, method, properties, body):
-    # gestionar contenido de body llamando a mergeDict
-    global received_maps
-    global global_dict
-    print(body.decode('utf-8'))
+
     chunk_dict = COS_session.get_object (bucket_name, body.decode('utf-8'))
     chunk_dict = json.loads(chunk_dict)
+    print(mapping_result.received_maps, body.decode('utf-8'))
     #print (chunk_dict)
-    mergeDict (global_dict, chunk_dict, lambda n1,n2: n1+n2)
+    mergeDict (mapping_result.dict, chunk_dict, lambda n1,n2: n1+n2)
     COS_session.delete_object(bucket_name, body.decode('utf-8'))
-    received_maps += 1
-    if received_maps == sent_maps:
+    mapping_result.increaseReceived()
+    if mapping_result.reduceEnd():
         ch.stop_consuming()
     
 def configQueue():
-    params = pika.URLParameters(rabbit_config['url'])
+    params = pika.URLParameters(res['rabbit_mq']['url'])
     connection = pika.BlockingConnection(params)
     channel = connection.channel()
     channel.queue_declare(queue='mapReduceSD')

@@ -17,18 +17,22 @@ def map_dataset (map_dataset_info):
     ds_char='bytes='+str(first_char)+'-'+str(first_char)
     while first_char > 0 and COS_session.get_object(map_dataset_info['bucket_name'],
                                         map_dataset_info['dataset_name'],
-                                        extra_get_args={'Range': ds_char}).decode('utf-8').isalnum():
+                                        extra_get_args={'Range': ds_char}).decode('utf-8', 'replace').isalnum():
         first_char -= 1
         ds_char='bytes='+str(first_char)+'-'+str(first_char)
         
     last_char=map_dataset_info['ds_range_max']
     if last_char < map_dataset_info['ds_size'] - 1:
-        ds_char='bytes='+str(last_char)+'-'+str(last_char)
-        while last_char > first_char and COS_session.get_object(map_dataset_info['bucket_name'],
-                                            map_dataset_info['dataset_name'],
-                                            extra_get_args={'Range': ds_char}).decode('utf-8').isalnum():
-            last_char -= 1
+        ds_char='bytes='+str(last_char+1)+'-'+str(last_char+1)
+        if COS_session.get_object(map_dataset_info['bucket_name'],
+                                                map_dataset_info['dataset_name'],
+                                                extra_get_args={'Range': ds_char}).decode('utf-8', 'replace').isalnum():
             ds_char='bytes='+str(last_char)+'-'+str(last_char)
+            while last_char > first_char and COS_session.get_object(map_dataset_info['bucket_name'],
+                                                map_dataset_info['dataset_name'],
+                                                extra_get_args={'Range': ds_char}).decode('utf-8', 'replace').isalnum():
+                last_char -= 1
+                ds_char='bytes='+str(last_char)+'-'+str(last_char)
     
     ds_range = ds_char='bytes='+str(first_char)+'-'+str(last_char)
     
@@ -36,7 +40,7 @@ def map_dataset (map_dataset_info):
                                     map_dataset_info['dataset_name'],
                                     extra_get_args={'Range': ds_range})
     
-    ds_chunk=re.sub("[^\w\s\-]", " ",  ds_chunk.decode('utf-8'))
+    ds_chunk=re.sub("[^\w\s\-]", " ",  ds_chunk.decode('utf-8', 'replace'))
     result_dict = dict()
     result_dict['counting_words']=0
     result_dict['word_count']=dict()
