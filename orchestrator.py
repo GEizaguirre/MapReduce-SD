@@ -8,18 +8,33 @@ from cos_backend import COSbackend
 from save_result import ResultLog
 import ibm_botocore
 import ibm_cf_connection
-import configure_functions
 import pika
 import json
 import yaml
+import time
+import requests
 
-with open('cloud_config', 'r') as config_file:
-    res = yaml.safe_load(config_file)
+try:
+    with open('cloud_config', 'r') as config_file:
+        res = yaml.safe_load(config_file)
+except FileNotFoundError:
+    print (" We could not find your configuration yaml file cloud_config.")
+    sys.exit(7)
 
-bucket_name = res['bucket_name']
-COS_session = COSbackend (res['ibm_cos'])
-mapping_result = ResultLog (COS_session)
-fn_session=ibm_cf_connection.CloudFunctions(res['ibm_cf']) 
+    bucket_name = res['bucket_name']
+    COS_session = COSbackend (res['ibm_cos'])
+
+try:
+    mapping_result = ResultLog (COS_session)
+except requests.exceptions.ConnectionError:
+    print(" Conection to IBM cloud COS service failed. Check your connection parameters.")
+    sys.exit(4)
+
+try:    
+    fn_session=ibm_cf_connection.CloudFunctions(res['ibm_cf']) 
+except requests.exceptions.ConnectionError:
+    print(" Conection to IBM cloud Functiones service failed. Check your connection parameters.")
+    sys.exit(5)
 
 def main ():
     
@@ -28,14 +43,14 @@ def main ():
     if (len(sys.argv) == 1):
         print (" No parameters were detected.\n A dataset name must be specified at least. ")
         show_help()
-        exit
+        sys.exit(1)
     if (len(sys.argv) > 2):
         chunk_number=int(sys.argv[2])
         if chunk_number > 20 :
             print (" Maximum chunk number is 20.")
             chunk_number = 20
         print(" Chunk number was set to ", chunk_number)
-        if chunk_number == 0: exit
+        if chunk_number == 0: sys.exit(0)
     else:   
         print(" Chunk number was set to the default value of ", chunk_number)
     dataset_name=sys.argv[1]
@@ -43,17 +58,22 @@ def main ():
     dataset_list = []
     try:
         # Create list of datasets.
-        for elem in COS_session.list_objects(bucket_name):
-            dataset_list.append(elem['Key'])  
+        try:
+            for elem in COS_session.list_objects(bucket_name):
+                dataset_list.append(elem['Key']) 
+        except ibm_botocore.exceptions.EndpointConnectionError: 
+            print (" It seems your IBM COS configuration is not correct.")
+            sys.exit(4)
         # Consult if the chosen dataset is available.
         if dataset_name in dataset_list:
             dataset_size = int(COS_session.head_object(bucket_name, dataset_name)['content-length'])
             print (" Chosen ", dataset_name, " with size ", dataset_size, "B. ")
         else:
             print (" Dataset ", dataset_name, " could not be found in bucket ", bucket_name)
-        print ( " Processing... ")
+            sys.exit(2)
     except ibm_botocore.exceptions.ClientError:
         print ( " Bucket ", bucket_name, " not found.")
+        sys.exit(3)
      
     chunk_size=int(dataset_size/int(chunk_number))
     
@@ -71,6 +91,7 @@ def main ():
     channel=configQueue()
     chunk_start=0
     
+    start_time=time.time()
     print (" Mapping...")
     while chunk_start<dataset_size:
         
@@ -79,16 +100,22 @@ def main ():
                 
         map_dataset_info['ds_range_min']=chunk_start
         map_dataset_info['ds_range_max']=chunk_end
+        try:
+            fn_session.invoke('map', map_dataset_info)
+        except AttributeError:
+            print ( " It seems that your IBM Cloud Functions configuration is not correct.")
+            sys.exit(5)
         print (mapping_result.sent_maps)
-        print(fn_session.invoke('map', map_dataset_info))
         chunk_start=chunk_end + 1
         mapping_result.increaseSent()
     
     reduce(channel)
     print (" End of mapping")
+    end_time=time.time()
     mapping_result.dict['word_count'] = sorted(mapping_result.dict['word_count'].items(), key=lambda x: x[1], reverse=True)
     print (mapping_result.dict)
-    #return (mapping_result.dict)
+    print (" Execution time for MapReduce: ", round(end_time-start_time, 4))
+    return (mapping_result.dict)
  
 def show_help ():
     print (" MapReduce program. Needs a chunk size (optional) and a dataset name (compulsive).")
@@ -110,7 +137,6 @@ def manageResults (ch, method, properties, body):
     chunk_dict = COS_session.get_object (bucket_name, body.decode('utf-8'))
     chunk_dict = json.loads(chunk_dict)
     print(mapping_result.received_maps, body.decode('utf-8'))
-    #print (chunk_dict)
     mergeDict (mapping_result.dict, chunk_dict, lambda n1,n2: n1+n2)
     COS_session.delete_object(bucket_name, body.decode('utf-8'))
     mapping_result.increaseReceived()
@@ -119,7 +145,11 @@ def manageResults (ch, method, properties, body):
     
 def configQueue():
     params = pika.URLParameters(res['rabbit_mq']['url'])
-    connection = pika.BlockingConnection(params)
+    try:
+        connection = pika.BlockingConnection(params)
+    except pika.exceptions.ConnectionClosedByBroker:
+        print (" It seems your Rabbit MQ url is not correct")
+        sys.exit(6)
     channel = connection.channel()
     channel.queue_declare(queue='mapReduceSD')
     channel.basic_consume('mapReduceSD', manageResults, True)

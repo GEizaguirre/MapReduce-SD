@@ -1,2 +1,5 @@
 cloud_config
-texts
+texts/
+__pycache__/
+.project
+.pydevproject
