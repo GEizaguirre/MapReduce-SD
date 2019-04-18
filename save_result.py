@@ -8,8 +8,8 @@ class ResultLog ():
     
     def __init__(self, cos_session):
         self.dict = dict()
-        self.dict['word_count'] = dict()
         self.dict['counting_words'] = 0
+        self.dict['word_count'] = dict()
         self.received_maps=0
         self.sent_maps=0
         self.COS_session = cos_session

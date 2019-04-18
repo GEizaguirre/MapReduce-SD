@@ -21,8 +21,8 @@ except FileNotFoundError:
     print (" We could not find your configuration yaml file cloud_config.")
     sys.exit(7)
 
-    bucket_name = res['bucket_name']
-    COS_session = COSbackend (res['ibm_cos'])
+bucket_name = res['bucket_name']
+COS_session = COSbackend (res['ibm_cos'])
 
 try:
     mapping_result = ResultLog (COS_session)
@@ -44,16 +44,31 @@ def main ():
         print (" No parameters were detected.\n A dataset name must be specified at least. ")
         show_help()
         sys.exit(1)
-    if (len(sys.argv) > 2):
-        chunk_number=int(sys.argv[2])
-        if chunk_number > 20 :
-            print (" Maximum chunk number is 20.")
-            chunk_number = 20
-        print(" Chunk number was set to ", chunk_number)
-        if chunk_number == 0: sys.exit(0)
-    else:   
-        print(" Chunk number was set to the default value of ", chunk_number)
-    dataset_name=sys.argv[1]
+        
+    if sys.argv[1] == '-p':
+        printing = True
+        if (len(sys.argv) > 3):
+            chunk_number=int(sys.argv[3])
+            if chunk_number > 20 :
+                print (" Maximum chunk number is 20.")
+                chunk_number = 20
+            print(" Chunk number was set to ", chunk_number)
+            if chunk_number == 0: sys.exit(0)
+        else:   
+            print(" Chunk number was set to the default value of ", chunk_number)
+        dataset_name=sys.argv[2]
+    else:
+        printing = False
+        if (len(sys.argv) > 2):
+            chunk_number=int(sys.argv[2])
+            if chunk_number > 20 :
+                print (" Maximum chunk number is 20.")
+                chunk_number = 20
+            print(" Chunk number was set to ", chunk_number)
+            if chunk_number == 0: sys.exit(0)
+        else:   
+            print(" Chunk number was set to the default value of ", chunk_number)
+        dataset_name=sys.argv[1]
     
     dataset_list = []
     try:
@@ -113,7 +128,12 @@ def main ():
     print (" End of mapping")
     end_time=time.time()
     mapping_result.dict['word_count'] = sorted(mapping_result.dict['word_count'].items(), key=lambda x: x[1], reverse=True)
-    print (mapping_result.dict)
+    #print (mapping_result.dict)
+    # NEW 
+    if (printing):
+        print({k.encode('utf8'): v for k, v in dict(mapping_result.dict['word_count']).items()})
+    print(" Total count of words: ", mapping_result.dict['counting_words'])
+    print (" Length of dictionary: ", len(mapping_result.dict['word_count']))
     print (" Execution time for MapReduce: ", round(end_time-start_time, 4))
     return (mapping_result.dict)
  
@@ -134,14 +154,17 @@ def reduce(channel):
        
 def manageResults (ch, method, properties, body):
 
-    chunk_dict = COS_session.get_object (bucket_name, body.decode('utf-8'))
-    chunk_dict = json.loads(chunk_dict)
-    print(mapping_result.received_maps, body.decode('utf-8'))
-    mergeDict (mapping_result.dict, chunk_dict, lambda n1,n2: n1+n2)
-    COS_session.delete_object(bucket_name, body.decode('utf-8'))
-    mapping_result.increaseReceived()
-    if mapping_result.reduceEnd():
-        ch.stop_consuming()
+    if body.decode('utf-8')[-5:] == 'final':
+        mapping_result.increaseReceived()
+        # que manden mensaje al acabar
+        if mapping_result.reduceEnd():
+            ch.stop_consuming()
+    else: 
+        chunk_dict = COS_session.get_object (bucket_name, body.decode('utf-8'))
+        chunk_dict = json.loads(chunk_dict)
+        print(mapping_result.received_maps, body.decode('utf-8'))
+        mergeDict (mapping_result.dict, chunk_dict, lambda n1,n2: n1+n2)
+        COS_session.delete_object(bucket_name, body.decode('utf-8'))
     
 def configQueue():
     params = pika.URLParameters(res['rabbit_mq']['url'])
