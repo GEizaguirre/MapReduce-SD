@@ -100,7 +100,8 @@ def main ():
                   'rabbit_url':res['rabbit_mq']['url'],
                   'ds_range_min':None,
                   'ds_range_max':None,
-                  'ds_size':dataset_size}
+                  'ds_size':dataset_size,
+                  'queue_name':res['queue_name']}
     
     
     # Start RabbitMQ queue for listening to map functions
@@ -180,8 +181,8 @@ def configQueue():
         print (" It seems your Rabbit MQ url is not correct")
         sys.exit(6)
     channel = connection.channel()
-    channel.queue_declare(queue='SDmapReduce')
-    channel.basic_consume('SDmapReduce', manageResults, True)
+    channel.queue_declare(queue=res['queue_name'])
+    channel.basic_consume(res['queue_name'], manageResults, True)
     return channel
     
 if __name__ == "__main__":

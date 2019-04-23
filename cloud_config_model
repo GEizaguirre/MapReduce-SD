@@ -1,0 +1,17 @@
+chunks_bucket    : name_of_bucket_for_uploading_partial_results
+bucket_name    : name_of_bucket_containing_datasets_and_for_uploading_final_results
+
+ibm_cf:
+    endpoint    : ibm_cloud_functions_endpoint
+    namespace   : ibm_cloud_functions_namespace
+    secret_key     : ibm_cloud_functions_secret_key
+
+ibm_cos:
+    endpoint   : ibm_cos_endpoint
+    access_key : ibm_cos_access_key
+    secret_key : ibm_cos_secret_key
+    
+rabbit_mq:
+    url   : rabbit_mq_server_url
+
+queue_name    : name_for_declaration_of_queue

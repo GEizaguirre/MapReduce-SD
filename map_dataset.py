@@ -76,12 +76,12 @@ def map_dataset (map_dataset_info):
         serialized_result=json.dumps(result_dict)
         chunk_name='chunk' + ds_range + '_' + str(dict_counter)
         COS_session.put_object(bucket_name=map_dataset_info['chunks_bucket'], key=str(chunk_name), data=serialized_result)
-        channel.basic_publish (exchange='', routing_key='SDmapReduce', body='chunk' + ds_range + '_' + str(dict_counter))
+        channel.basic_publish (exchange='', routing_key=map_dataset_info['queue_name'], body='chunk' + ds_range + '_' + str(dict_counter))
         dict_counter+=1
         current_min = real_max
         real_max = current_min + 41943040
         
-    channel.basic_publish (exchange='', routing_key='SDmapReduce', body='chunk' + ds_range + '_' + 'final')
+    channel.basic_publish (exchange='', routing_key=map_dataset_info['queue_name'], body='chunk' + ds_range + '_' + 'final')
     connection.close()
     return ({'chunk_size':ds_range})
 
