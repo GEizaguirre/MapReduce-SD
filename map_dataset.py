@@ -15,9 +15,15 @@ def map_dataset (map_dataset_info):
 
     ds_range = 'bytes='+str(map_dataset_info['ds_range_min'])+'-'+str(map_dataset_info['ds_range_max'])
     
+    params=pika.URLParameters(map_dataset_info['rabbit_url'])
+    params.socket_timeout = 10
+    connection = pika.BlockingConnection(params)
+    channel = connection.channel()
+        
     current_min=map_dataset_info['ds_range_min']
-    current_max=current_min + 41943040 
+    real_max = current_min + 41943040 
     while current_min < map_dataset_info['ds_range_max']:
+        current_max = real_max
         if current_max > map_dataset_info['ds_range_max']:
             current_max = map_dataset_info['ds_range_max']
         # Modelate chunk not to cut words 
@@ -50,10 +56,6 @@ def map_dataset (map_dataset_info):
         result_dict = dict()
         result_dict['counting_words']=0
         result_dict['word_count']=dict()
-        params=pika.URLParameters(map_dataset_info['rabbit_url'])
-        params.socket_timeout = 10
-        connection = pika.BlockingConnection(params)
-        channel = connection.channel()
         #ds_list=ds_chunk.lower().split()
         for word in split_iter(ds_chunk):
             word.lower()
@@ -62,24 +64,24 @@ def map_dataset (map_dataset_info):
                 result_dict['word_count'][word] += 1
             else: 
                 result_dict['word_count'][word] = 1 
-            if (len(result_dict['word_count']) == 50000):
-                serialized_result=json.dumps(result_dict)
-                chunk_name='chunk' + ds_range + '_' + str(dict_counter)
-                COS_session.put_object(bucket_name=map_dataset_info['bucket_name'], key=str(chunk_name), data=serialized_result)
-                channel.basic_publish (exchange='', routing_key='mapReduceSD', body='chunk' + ds_range + '_' + str(dict_counter))
-                result_dict['word_count']={}
-                result_dict['counting_words']=0
-                dict_counter+=1
+            #if (len(result_dict['word_count']) == 100000):
+            #    serialized_result=json.dumps(result_dict)
+            #    chunk_name='chunk' + ds_range + '_' + str(dict_counter)
+            #    COS_session.put_object(bucket_name=map_dataset_info['chunks_bucket'], key=str(chunk_name), data=serialized_result)
+            #    channel.basic_publish (exchange='', routing_key='mapReduceSD', body='chunk' + ds_range + '_' + str(dict_counter))
+            #    result_dict['word_count']={}
+            #    result_dict['counting_words']=0
+            #    dict_counter+=1
                 
         serialized_result=json.dumps(result_dict)
         chunk_name='chunk' + ds_range + '_' + str(dict_counter)
-        COS_session.put_object(bucket_name=map_dataset_info['bucket_name'], key=str(chunk_name), data=serialized_result)
-        channel.basic_publish (exchange='', routing_key='mapReduceSD', body='chunk' + ds_range + '_' + str(dict_counter))
+        COS_session.put_object(bucket_name=map_dataset_info['chunks_bucket'], key=str(chunk_name), data=serialized_result)
+        channel.basic_publish (exchange='', routing_key='SDmapReduce', body='chunk' + ds_range + '_' + str(dict_counter))
         dict_counter+=1
-        current_min = current_max
-        current_max = current_min + 83886080
+        current_min = real_max
+        real_max = current_min + 41943040
         
-    channel.basic_publish (exchange='', routing_key='mapReduceSD', body='chunk' + ds_range + '_' + 'final')
+    channel.basic_publish (exchange='', routing_key='SDmapReduce', body='chunk' + ds_range + '_' + 'final')
     connection.close()
     return ({'chunk_size':ds_range})
 

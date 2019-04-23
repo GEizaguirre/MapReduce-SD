@@ -37,6 +37,8 @@ except requests.exceptions.ConnectionError:
     print(" Conection to IBM cloud Functiones service failed. Check your connection parameters.")
     sys.exit(5)
 
+bodies= list()
+
 def main ():
     
     chunk_number=1
@@ -91,7 +93,9 @@ def main ():
         print ( " Bucket ", bucket_name, " not found.")
         sys.exit(3)
      
+    chunk_number = 1
     chunk_size=int(dataset_size/int(chunk_number))
+    
     
     map_dataset_info={'cos_config':{'endpoint':res['ibm_cos']['endpoint'],
                   'secret_key':res['ibm_cos']['secret_key'],
@@ -126,14 +130,23 @@ def main ():
         mapping_result.increaseSent()
     
     reduce(channel)
+    
+    # sequential consumption
+    for body in bodies:
+        chunk_dict = COS_session.get_object (chunks_bucket, body)
+        chunk_dict = json.loads(chunk_dict)
+        print(mapping_result.received_maps, body)
+        mergeDict (mapping_result.dict, chunk_dict, lambda n1,n2: n1+n2)
+        COS_session.delete_object(chunks_bucket, body)
+        
     print (" End of reducing")
     end_time=time.time()
     mapping_result.dict['word_count'] = sorted(mapping_result.dict['word_count'].items(), key=lambda x: x[1], reverse=True)
     
     #Upload result to IBM COS
     serialized_result=json.dumps(mapping_result.dict)
-    COS_session.put_object(bucket_name=bucket_name, key=dataset_name+'_result_'+str(chunk_number), data=serialized_result)
-    print (" Results named " + dataset_name+'_result_'+str(chunk_number) + " have been uploaded to " + bucket_name)
+    COS_session.put_object(bucket_name=bucket_name, key=dataset_name+'_resultSeq', data=serialized_result)
+    print (" Results named " + dataset_name+'_resultSeq' + " have been uploaded to " + bucket_name)
     #print (mapping_result.dict)
     # NEW 
     if (printing):
@@ -161,16 +174,9 @@ def reduce(channel):
 def manageResults (ch, method, properties, body):
 
     if body.decode('utf-8')[-5:] == 'final':
-        mapping_result.increaseReceived()
-        # que manden mensaje al acabar
-        if mapping_result.reduceEnd():
-            ch.stop_consuming()
+        ch.stop_consuming()
     else: 
-        chunk_dict = COS_session.get_object (chunks_bucket, body.decode('utf-8'))
-        chunk_dict = json.loads(chunk_dict)
-        print(mapping_result.received_maps, body.decode('utf-8'))
-        mergeDict (mapping_result.dict, chunk_dict, lambda n1,n2: n1+n2)
-        COS_session.delete_object(chunks_bucket, body.decode('utf-8'))
+        bodies.append(body.decode('utf-8'))
     
 def configQueue():
     params = pika.URLParameters(res['rabbit_mq']['url'])
