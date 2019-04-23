@@ -1,7 +1,13 @@
 '''
-Created on 13 mar. 2019
+Created on 22 mar. 2019
 
-@author: German
+Sequential implementation of the orchestartor  for mapReduce.
+It starts reducing partial results after ensuring all chunk have been completed.
+
+@author: German Telmo Eizaguirre Suarez
+@contact: germantelmoeizaguirre@estudiants.urv.cat
+@organization: Universitat Rovira i Virgili
+
 '''
 import sys
 from cos_backend import COSbackend

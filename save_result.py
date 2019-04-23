@@ -1,7 +1,13 @@
 '''
-Created on 16 abr. 2019
+Created on 22 mar. 2019
 
-@author: German
+Module with the class ResultLog for managing the results from
+the mapReduce application.
+
+@author: German Telmo Eizaguirre Suarez
+@contact: germantelmoeizaguirre@estudiants.urv.cat
+@organization: Universitat Rovira i Virgili
+
 '''
 
 class ResultLog ():
